@@ -12,7 +12,7 @@ from selenium.common.exceptions import TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
 
 
-TARGET_URL = "https://www.w3schools.com"
+TARGET_URL = "https://fixthephoto.com/online-gimp-editor.html"
 OUTPUT_DIR = "web_crawler"
 OUTPUT_FILE = "index.html"
 

@@ -8,11 +8,11 @@ import json
 options = Options()
 options.add_argument("--start-maximized")
 
-service = Service("chromedriver.exe")  # adjust path
+service = Service("chromedriver.exe") 
 driver = webdriver.Chrome(service=service, options=options)
 
 driver.get("https://onlinenotepad.org/notepad")
-time.sleep(3)  # allow JS to render
+time.sleep(3) 
 
 ui_snapshot = {
     "url": driver.current_url,
@@ -43,7 +43,7 @@ for btn in driver.find_elements(By.TAG_NAME, "button"):
 # --- LINKS ---
 for link in driver.find_elements(By.TAG_NAME, "a"):
     text = link.text.strip()
-    if text:  # ignore empty links
+    if text: 
         ui_snapshot["links"].append({
             "tag": "a",
             "text": text,
