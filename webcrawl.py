@@ -1,28 +1,4 @@
-"""
-webcrawl.py — Hybrid State Transition Graph Builder  (fixed)
-Default: fast HTTP crawling via requests + BeautifulSoup.
-Fallback: Selenium headless Chrome for JavaScript-heavy pages.
 
-Output: results/transition_graph.json
-
-Bugs fixed vs original:
-  1. crawl_browser() now adds URL to visited_urls immediately (prevented infinite re-queuing)
-  2. Clickables are re-collected after every driver.back() (StaleElementReferenceException
-     was silently killing all but the first click on every page)
-  3. depth+1 is now correctly propagated through the browser queue drain loop
-  4. Query parameters are sorted before hashing so param-order variants don't
-     create duplicate states
-  5. DOM mutation detection uses structural role/id diffing instead of raw
-     character-count threshold (eliminates spurious transitions from spinners etc.)
-  6. from_sid passed to crawl_browser() is the *parent* sid, not the current
-     page's sid (orphaned browser nodes now connect to the graph)
-  7. Browser-queue drain loop preserves original (depth, from_sid) tuples instead
-     of re-wrapping them with wrong parent context
-
-Run:
-    pip install requests beautifulsoup4 selenium webdriver-manager
-    python webcrawl.py
-"""
 from __future__ import annotations
 
 import hashlib
@@ -71,8 +47,8 @@ def logp(msg: str, depth: int = 0):
 
 
 # BASE_URL    = "https://llm-exploratory-hub.lovable.app/"
-BASE_URL    = "https://explor-bot-forge.lovable.app/"
-# BASE_URL    = "https://testerweb.lovable.app/products"
+# BASE_URL    = "https://explor-bot-forge.lovable.app/"
+BASE_URL    = "https://testerweb.lovable.app/products"
 
 OUTPUT_FILE = "results/transition_graph.json"
 
@@ -85,7 +61,7 @@ CRAWL_DELAY      = 0.3
 ENABLE_BROWSER_FALLBACK    = True
 BROWSER_TIMEOUT            = 10
 BROWSER_INTERACTION_DELAY  = 0.5
-MAX_CLICKABLES_PER_PAGE    = 25   
+MAX_CLICKABLES_PER_PAGE    = 6   
 
 # ── Blocked / external patterns ───────────────────────────────────────────────
 BLOCKED_PATHS = [
@@ -111,9 +87,7 @@ def norm(url: str, base: str = "") -> str:
     Normalise a URL: resolve relative refs, strip trailing slash, drop
     fragment, and SORT query parameters so that ?a=1&b=2 and ?b=2&a=1
     produce the same canonical URL.
-
-    FIX #4: sorted query params → stable state IDs, no duplicate states
-    for the same page reached via different param orderings.
+.
     """
     try:
         resolved = urljoin(base, url) if base else url
@@ -367,9 +341,6 @@ def _flush_any_alert(driver: "webdriver.Chrome") -> None:
     handle_alert(driver)
 
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# BASE GRAPH BUILDER  (HTTP-only, no Selenium)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 class GraphBuilder:
     def __init__(self, seed: str, max_depth: int = MAX_DEPTH):
@@ -651,14 +622,6 @@ class HybridCrawler(GraphBuilder):
           3. Click each safe interactive element; record URL-change and
              structural DOM-change transitions.
 
-        FIX #1: url is added to visited_urls immediately on entry so the
-        browser queue can never re-schedule this URL for a second crawl.
-
-        FIX #2: clickables are re-fetched before every individual click
-        so stale element references never silently kill interactions.
-
-        FIX #6: parent_sid is the CALLER's state id, not this page's,
-        so the incoming transition is correctly recorded.
         """
         # ── FIX #1: mark visited immediately ─────────────────────────────────
         self.visited_urls.add(url)
@@ -738,9 +701,7 @@ class HybridCrawler(GraphBuilder):
         pre_html = driver.page_source   # snapshot before any clicks
 
         for click_index in range(MAX_CLICKABLES_PER_PAGE):
-            # ── FIX #2: re-collect clickables fresh before every click ────────
-            # After driver.back() the DOM is rebuilt and all previous element
-            # references are stale.  Re-collecting here is the only safe pattern.
+
             try:
                 clickables = self._find_clickables(driver)
             except WebDriverException:
@@ -812,9 +773,7 @@ class HybridCrawler(GraphBuilder):
                         break
 
             # ── Case B: Structural DOM change (modal/drawer opened) ───────────
-            # FIX #5: use structural differ instead of raw char-count threshold.
-            # Raw count fired on every spinner/tooltip; structural diff fires
-            # only when genuinely new identifiable elements appear.
+
             elif has_structural_change(pre_html_snap, post_html):
                 logp(
                     f"[BROWSER] Structural DOM change via '{elem_text}' on {url}",
@@ -870,9 +829,6 @@ class HybridCrawler(GraphBuilder):
         """
         BFS crawl with automatic HTTP → Selenium fallback.
 
-        FIX #3 / FIX #7: the browser-queue drain loop now appends items to
-        the BFS queue AS-IS, preserving the original (depth, from_sid) tuple
-        rather than re-wrapping them with wrong context.
 
         Only URLs not yet in visited_urls are added to the queue, and
         visited_urls is checked again at the top of the outer loop — so

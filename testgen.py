@@ -1,22 +1,4 @@
-"""
-testgen.py — CLI orchestrator for LLM-based test case generation.
 
-Uses Groq as the LLM backend (model: llama-3.3-70b-versatile by default).
-Set GROQ_API_KEY (or GROQ_API_KEY_1/2/3 for rotation) in your .env file.
-
-Usage:
-  # Full pipeline (Phase 1 + Phase 2)
-  python testgen.py --graph results/transition_graph.json
-
-  # Skip Phase 1 — supply an existing knowledge base explicitly
-  python testgen.py --graph results/transition_graph.json --kb results/knowledge_base.json
-
-  # Force re-generation of the knowledge base even if one already exists
-  python testgen.py --graph results/transition_graph.json --force-kb
-
-  # Use a specific Groq model
-  python testgen.py --graph results/transition_graph.json --model llama-3.1-8b-instant
-"""
 from __future__ import annotations
 
 import argparse

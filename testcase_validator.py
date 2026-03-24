@@ -1,22 +1,4 @@
-"""
-testcase_validator.py — Validate and clean generated test cases.
 
-Removes:
-  1. Hallucinated tests  — reference URLs / form fields not found in the graph
-  2. Duplicate tests     — identical action sequences (same category + same steps)
-  3. Form tests on form-less sites — any form/boundary/security test when the
-                                     graph has zero form fields
-
-Usage:
-    python testcase_validator.py                        # uses defaults
-    python testcase_validator.py --graph  results/transition_graph.json \
-                                 --input  results/test_cases.json \
-                                 --output results/test_cases_validated.json
-
-Outputs:
-    • A cleaned JSON file (same schema as the input)
-    • A validation report printed to stdout
-"""
 from __future__ import annotations
 
 import argparse

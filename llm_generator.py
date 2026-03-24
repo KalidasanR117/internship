@@ -25,7 +25,7 @@ import math
 import os
 import re
 import time
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 from groq import Groq
 
@@ -44,8 +44,8 @@ FALLBACK_MODEL = os.getenv("FALLBACK_MODEL", "llama-3.1-8b-instant")
 # and caused truncation mid-object, producing unparseable JSON.
 KB_MAX_TOKENS       = 4000   # raised from 2000
 TESTCASE_MAX_TOKENS = 3000
-TESTCASE_CHUNK_SIZE = 5
-TESTS_PER_CATEGORY  = 15
+TESTCASE_CHUNK_SIZE = 15
+TESTS_PER_CATEGORY  = 6
 GRAPH_CONTEXT_LIMIT = 30
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -909,12 +909,16 @@ def generate_knowledge_base(graph_context: str,
 
 
 def generate_test_cases(graph_context: str,
-                         knowledge_base: dict,
-                         model: str = DEFAULT_MODEL,
-                         graph_facts: dict | None = None) -> list[dict]:
+                       knowledge_base: dict,
+                       model: str = DEFAULT_MODEL,
+                       graph_facts: dict | None = None) -> list[dict]:
     """
     Phase 2b: LLM-generated creative test cases.
+    Parallelized across categories for faster execution.
     """
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     has_forms   = (graph_facts or {}).get("has_forms", True)
     states      = (graph_facts or {}).get("states", [])
     transitions = (graph_facts or {}).get("transitions", [])
@@ -962,7 +966,6 @@ def generate_test_cases(graph_context: str,
     else:
         log.info("Site has no forms — skipping form/boundary/security categories.")
 
-    # ── Build graph-derived whitelists (generic — derived from any crawled graph) —
     known_urls_list = [
         s["url"] for s in states
         if s.get("url") and s.get("page_type") != "external_boundary"
@@ -976,32 +979,46 @@ def generate_test_cases(graph_context: str,
                 val = (ff.get(key) or "").strip()
                 if val:
                     known_fields_set.add(val)
+
     known_fields_str = ", ".join(sorted(known_fields_set)) if known_fields_set else ""
 
+    id_counter = 1
     all_test_cases: list[dict] = []
     failed_categories: list[str] = []
-    id_counter = 1
 
-    for category, total_count, extra_context in plan:
-        n_chunks  = math.ceil(total_count / TESTCASE_CHUNK_SIZE)
+
+    # ===========================
+    # Parallel category generator
+    # ===========================
+
+    def _generate_category(category_tuple):
+        nonlocal id_counter
+
+        category, total_count, extra_context = category_tuple
+
+        n_chunks = math.ceil(total_count / TESTCASE_CHUNK_SIZE)
         cat_tests: list[dict] = []
-        generated_titles: list[str] = []   # track across chunks to prevent repeats
+        generated_titles: list[str] = []
+
         log.info(
             f"Phase 2b — '{category}': {total_count} tests in {n_chunks} chunk(s)..."
         )
 
         for chunk_idx in range(n_chunks):
-            chunk_size = min(TESTCASE_CHUNK_SIZE,
-                             total_count - chunk_idx * TESTCASE_CHUNK_SIZE)
+
+            chunk_size = min(
+                TESTCASE_CHUNK_SIZE,
+                total_count - chunk_idx * TESTCASE_CHUNK_SIZE
+            )
+
             if chunk_size <= 0:
                 break
 
-            # Ramp temperature across chunks for more variety
-            # chunk 0 = 0.1 (stable), chunk 1 = 0.2, chunk 2 = 0.3, etc. capped at 0.4
             chunk_temp = min(0.1 + chunk_idx * 0.1, 0.4)
 
             prompt = _build_testcase_prompt(
-                graph_context, knowledge_base,
+                graph_context,
+                knowledge_base,
                 category=category,
                 count=chunk_size,
                 extra_context=extra_context,
@@ -1009,36 +1026,84 @@ def generate_test_cases(graph_context: str,
                 known_urls_str=known_urls_str,
                 already_generated=generated_titles if generated_titles else None,
             )
+
             try:
-                raw    = _call_llm(model, prompt, max_tokens=TESTCASE_MAX_TOKENS,
-                                   temperature=chunk_temp)
+
+                raw = _call_llm(
+                    model,
+                    prompt,
+                    max_tokens=TESTCASE_MAX_TOKENS,
+                    temperature=chunk_temp
+                )
+
                 parsed = _extract_json(raw)
                 cases  = _unwrap_test_cases(parsed)
+
                 for tc in cases:
-                    # Use test_id from the LLM if present, otherwise assign one
+
                     if not tc.get("test_id"):
                         tc["test_id"] = f"TC_{category.upper()}_{id_counter:03d}"
+
                     id_counter += 1
-                    # Track generated titles to avoid repeats in next chunk
-                    title = (tc.get("title") or tc.get("description") or "").strip()
+
+                    title = (
+                        tc.get("title")
+                        or tc.get("description")
+                        or ""
+                    ).strip()
+
                     if title:
                         generated_titles.append(title)
+
                 cat_tests.extend(cases)
-                log.info(f"  chunk {chunk_idx + 1}/{n_chunks}: {len(cases)} tests "
-                         f"(temp={chunk_temp:.1f})")
+
+                log.info(
+                    f"  {category} chunk {chunk_idx+1}/{n_chunks}: "
+                    f"{len(cases)} tests (temp={chunk_temp:.1f})"
+                )
+
             except Exception as e:
-                log.error(f"  chunk {chunk_idx + 1}/{n_chunks} FAILED: {e}")
+
+                log.error(
+                    f"{category} chunk {chunk_idx+1}/{n_chunks} FAILED: {e}"
+                )
+
                 if chunk_idx == 0:
                     failed_categories.append(category)
+
                 break
 
-        log.info(f"  '{category}' total: {len(cat_tests)} tests generated.")
-        all_test_cases.extend(cat_tests)
+        log.info(f"'{category}' total: {len(cat_tests)} tests generated.")
+
+        return cat_tests
+
+
+    # ===========================
+    # Run categories in parallel
+    # ===========================
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+
+        futures = [
+            executor.submit(_generate_category, item)
+            for item in plan
+        ]
+
+        for future in as_completed(futures):
+
+            try:
+                all_test_cases.extend(future.result())
+
+            except Exception as e:
+
+                log.error(f"Category generation failed: {e}")
+
 
     if failed_categories:
         log.warning(f"Failed categories: {failed_categories}")
 
     log.info(f"Phase 2b total LLM test cases: {len(all_test_cases)}")
+
     return all_test_cases
 
 
