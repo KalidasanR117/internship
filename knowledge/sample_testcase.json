@@ -1,0 +1,153 @@
+{
+    "application_overview": {
+        "type": "Web Application",
+        "description": "A generic web application with navigation, forms, and data display.",
+        "expected_behaviors": [
+            "Navigation links change the URL and render the correct page content",
+            "Forms validate required fields before submission",
+            "Invalid input shows a clear, specific error message",
+            "Successful form submission updates the UI with a confirmation or result",
+            "Boundary values (min, max, empty) are handled gracefully",
+            "XSS payloads are never reflected raw in the page body"
+        ]
+    },
+    "sample_test_cases": [
+        {
+            "test_id": "TC_SAMPLE_001",
+            "category": "Navigation",
+            "title": "Navigate to a page via a navigation link and verify it loads",
+            "precondition": "User is on the source page",
+            "steps": [
+                "Open the source page URL",
+                "Locate the navigation link using the provided locator",
+                "Click the link",
+                "Verify the browser URL matches the destination page URL"
+            ],
+            "test_data": {
+                "locator": {
+                    "href": "https://example.com/target-page",
+                    "text": "Target Page"
+                }
+            },
+            "expected_result": "Browser URL changes to the destination page URL and the correct page content is rendered",
+            "from_state": "https://example.com/",
+            "to_state": "https://example.com/target-page"
+        },
+        {
+            "test_id": "TC_SAMPLE_002",
+            "category": "Functional",
+            "title": "Submit a form with valid inputs and verify success",
+            "precondition": "User is on the form page with all required fields visible",
+            "steps": [
+                "Open the form page URL",
+                "Fill in each required field with a valid value",
+                "Click the submit button",
+                "Verify a success message, result section, or page change is shown"
+            ],
+            "test_data": {
+                "locator": {
+                    "data_testid": "submit-button"
+                },
+                "input_values": {
+                    "field-name": "Valid Value",
+                    "email-field": "user@example.com"
+                }
+            },
+            "expected_result": "A success message or result section is visible confirming the submission was processed",
+            "from_state": "https://example.com/form",
+            "to_state": "https://example.com/form"
+        },
+        {
+            "test_id": "TC_SAMPLE_003",
+            "category": "Negative",
+            "title": "Submit a form with a required field left empty",
+            "precondition": "User is on the form page",
+            "steps": [
+                "Open the form page URL",
+                "Leave the required field empty",
+                "Click the submit button",
+                "Verify a validation error message appears and the form is not submitted"
+            ],
+            "test_data": {
+                "locator": {
+                    "data_testid": "submit-button"
+                },
+                "input_values": {
+                    "required-field": ""
+                }
+            },
+            "expected_result": "A validation error message appears and the user remains on the form page",
+            "from_state": "https://example.com/form",
+            "to_state": "https://example.com/form"
+        },
+        {
+            "test_id": "TC_SAMPLE_004",
+            "category": "Validation",
+            "title": "Submit a form with a logically invalid value and verify an error is shown",
+            "precondition": "User is on the form page",
+            "steps": [
+                "Open the form page URL",
+                "Enter a logically invalid value into the relevant field",
+                "Click the submit button",
+                "Verify the appropriate validation error is displayed"
+            ],
+            "test_data": {
+                "locator": {
+                    "data_testid": "submit-button"
+                },
+                "input_values": {
+                    "amount-field": "-100"
+                }
+            },
+            "expected_result": "A specific validation error message is displayed and the form is not submitted",
+            "from_state": "https://example.com/form",
+            "to_state": "https://example.com/form"
+        },
+        {
+            "test_id": "TC_SAMPLE_005",
+            "category": "Boundary",
+            "title": "Submit a form with the minimum allowed input value",
+            "precondition": "User is on the form page",
+            "steps": [
+                "Open the form page URL",
+                "Enter the minimum valid value into the relevant field",
+                "Click the submit button",
+                "Verify the UI handles the minimum value correctly without error"
+            ],
+            "test_data": {
+                "locator": {
+                    "data_testid": "submit-button"
+                },
+                "input_values": {
+                    "numeric-field": "1"
+                }
+            },
+            "expected_result": "Form accepts the minimum value and shows the correct result or confirmation without an error",
+            "from_state": "https://example.com/form",
+            "to_state": "https://example.com/form"
+        },
+        {
+            "test_id": "TC_SAMPLE_006",
+            "category": "Security",
+            "title": "Submit an XSS payload in a text field and verify it is not reflected",
+            "precondition": "User is on the form page",
+            "steps": [
+                "Open the form page URL",
+                "Enter an XSS payload into a text input field",
+                "Click the submit button",
+                "Verify the raw script tag is not rendered in the page body"
+            ],
+            "test_data": {
+                "locator": {
+                    "data_testid": "submit-button"
+                },
+                "input_values": {
+                    "text-field": "<script>alert('xss')</script>"
+                }
+            },
+            "expected_result": "The raw <script> tag is NOT visible in the page body; the XSS payload is escaped or rejected",
+            "from_state": "https://example.com/form",
+            "to_state": "https://example.com/form"
+        }
+    ]
+}
